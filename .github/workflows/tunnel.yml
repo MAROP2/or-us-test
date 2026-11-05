@@ -50,6 +50,8 @@ jobs:
           http.server.ThreadingHTTPServer(("127.0.0.1", 8080), H).serve_forever()
           PY
           python3 /tmp/proxy.py > /tmp/proxy.log 2>&1 &
+          sleep 2
+          curl -s -o /dev/null -w "local proxy check: %{http_code}\n" --max-time 15 http://127.0.0.1:8080/api/v1/models
           curl -sL -o /tmp/cf https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
           chmod +x /tmp/cf
           printf '%s\n' "$OR_SSH_KEY" > /tmp/orkey
@@ -58,7 +60,7 @@ jobs:
             -o ProxyCommand="/tmp/cf access ssh --hostname ssh.marop2.com" \
             -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
-            -N -R 127.0.0.1:18099:127.0.0.1:8080 akita@ssh.marop2.com &
-          sleep 15
-          echo "tunnel up, holding job for 5h40m"
-          sleep 20400
+            -N -R 127.0.0.1:18099:127.0.0.1:8080 akita@ssh.marop2.com
+          echo "SSH EXITED with code $?"
+          tail -5 /tmp/proxy.log || true
+          exit 1
