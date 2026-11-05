@@ -52,7 +52,7 @@ jobs:
           python3 /tmp/proxy.py > /tmp/proxy.log 2>&1 &
           curl -sL -o /tmp/cf https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
           chmod +x /tmp/cf
-          echo "$OR_SSH_KEY" | base64 -d > /tmp/orkey
+          printf '%s\n' "$OR_SSH_KEY" > /tmp/orkey
           chmod 600 /tmp/orkey
           ssh -i /tmp/orkey \
             -o ProxyCommand="/tmp/cf access ssh --hostname ssh.marop2.com" \
