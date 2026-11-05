@@ -26,9 +26,11 @@ jobs:
                       r = c.getresponse()
                       self.send_response(r.status)
                       for k, v in r.getheaders():
-                          if k.lower() in ("transfer-encoding", "connection", "keep-alive"): continue
+                          if k.lower() in ("transfer-encoding", "connection", "keep-alive", "content-length"): continue
                           self.send_header(k, v)
+                      self.send_header("Connection", "close")
                       self.end_headers()
+                      self.close_connection = True
                       while True:
                           chunk = r.read(8192)
                           if not chunk: break
