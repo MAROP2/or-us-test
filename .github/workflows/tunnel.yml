@@ -67,7 +67,7 @@ jobs:
             -o ProxyCommand="/tmp/cf access ssh --hostname ssh.marop2.com" \
             -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
-            -N -R 127.0.0.1:18099:127.0.0.1:8080 akita@ssh.marop2.com
+            -N -R 18099:127.0.0.1:8080 akita@ssh.marop2.com
           echo "SSH EXITED with code $?"
           tail -5 /tmp/proxy.log || true
           exit 1
