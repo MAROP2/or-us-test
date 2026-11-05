@@ -1,0 +1,24 @@
+name: OR diag
+on:
+  workflow_dispatch:
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: diag
+        env:
+          OR_SSH_KEY: ${{ secrets.OR_SSH_KEY }}
+        run: |
+          printf '%s\n' "$OR_SSH_KEY" > /tmp/orkey
+          head -c 60 /tmp/orkey; echo "...[len=$(wc -c < /tmp/orkey)]"
+          grep -q "BEGIN OPENSSH PRIVATE KEY" /tmp/orkey && echo "PEM OK" || echo "PEM BAD"
+          curl -sL -o /tmp/cf https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x /tmp/cf
+          chmod 600 /tmp/orkey
+          timeout 25 ssh -vv -i /tmp/orkey \
+            -o ProxyCommand="/tmp/cf access ssh --hostname ssh.marop2.com" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ExitOnForwardFailure=yes \
+            -N -R 127.0.0.1:18099:127.0.0.1:8080 akita@ssh.marop2.com 2>&1 | grep -E "debug1: (Connecting|Connection|identity|Authenticat|Offering|Server accepts|channel|local forward|remote forward|forward|Warning|Reading)|Access|denied|error|Error|cloudflared|failed|refused|18099" | head -30
+          echo "exit: $?"
