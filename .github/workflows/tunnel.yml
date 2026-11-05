@@ -52,8 +52,13 @@ jobs:
           python3 /tmp/proxy.py > /tmp/proxy.log 2>&1 &
           sleep 2
           curl -s -o /dev/null -w "local proxy check: %{http_code}\n" --max-time 15 http://127.0.0.1:8080/api/v1/models
-          curl -sL -o /tmp/cf https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          for i in 1 2 3; do
+            curl -fL --retry 2 -o /tmp/cf https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && break
+            echo "cf download attempt $i failed"; sleep 5
+          done
+          ls -la /tmp/cf; file /tmp/cf | head -1
           chmod +x /tmp/cf
+          /tmp/cf --version || { echo "cf binary broken"; exit 1; }
           printf '%s\n' "$OR_SSH_KEY" > /tmp/orkey
           chmod 600 /tmp/orkey
           ssh -i /tmp/orkey \
