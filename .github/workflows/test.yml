@@ -2,19 +2,19 @@ name: OR region test
 on:
   workflow_dispatch:
     inputs:
+      key:
+        required: true
       req:
-        description: 'request body json'
         required: true
 jobs:
   t:
     runs-on: ubuntu-latest
     steps:
       - name: ip
-        run: curl -s https://ipinfo.io/json | head -c 300
+        run: curl -s https://ipinfo.io/json | head -c 200
       - name: call
-        env:
-          KEY: ${{ secrets.OR_KEY }}
         run: |
           curl -s -X POST https://openrouter.ai/api/v1/chat/completions \
-            -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ github.event.inputs.key }}" \
+            -H "Content-Type: application/json" \
             -d '${{ github.event.inputs.req }}'
