@@ -9,40 +9,70 @@ jobs:
       - name: proxy + tunnel
         env:
           OR_SSH_KEY: ${{ secrets.OR_SSH_KEY }}
+          OR_KEY1: ${{ secrets.OR_KEY1 }}
+          OR_KEY2: ${{ secrets.OR_KEY2 }}
         run: |
           cat > /tmp/proxy.py <<'PY'
-          import http.server, http.client, ssl, sys
+          import http.server, http.client, ssl, sys, os
           TARGET = ("openrouter.ai", 443)
+          KEYS = [k for k in (os.environ.get("OR_KEY1"), os.environ.get("OR_KEY2")) if k]
+          key_idx = [0]
+
+          def rotate():
+              if len(KEYS) > 1:
+                  key_idx[0] = (key_idx[0] + 1) % len(KEYS)
+              sys.stderr.write("rotated to key #%d\n" % key_idx[0])
+
           class H(http.server.BaseHTTPRequestHandler):
               protocol_version = "HTTP/1.1"
               def _relay(self):
                   body = None
                   cl = self.headers.get("Content-Length")
                   if cl: body = self.rfile.read(int(cl))
-                  c = http.client.HTTPSConnection(*TARGET, context=ssl.create_default_context())
-                  hdrs = {k: v for k, v in self.headers.items() if k.lower() not in ("host", "transfer-encoding")}
-                  try:
-                      c.request(self.command, self.path, body=body, headers=hdrs)
-                      r = c.getresponse()
-                      self.send_response(r.status)
-                      for k, v in r.getheaders():
-                          if k.lower() in ("transfer-encoding", "connection", "keep-alive", "content-length"): continue
-                          self.send_header(k, v)
-                      self.send_header("Connection", "close")
-                      self.end_headers()
-                      self.close_connection = True
-                      while True:
-                          chunk = r.read(8192)
-                          if not chunk: break
-                          self.wfile.write(chunk)
-                          self.wfile.flush()
-                  except Exception as e:
-                      sys.stderr.write("relay error: %s\n" % e)
-                  finally:
+                  hdrs = {k: v for k, v in self.headers.items()
+                          if k.lower() not in ("host", "transfer-encoding", "authorization", "content-length")}
+                  tries = 0
+                  while True:
+                      c = http.client.HTTPSConnection(*TARGET, context=ssl.create_default_context())
+                      h = dict(hdrs)
+                      h["Authorization"] = "Bearer " + KEYS[key_idx[0]]
                       try:
-                          c.close()
-                      except Exception:
-                          pass
+                          c.request(self.command, self.path, body=body, headers=h)
+                          r = c.getresponse()
+                          # лимит/квота/бан ключа -> ротация и повтор
+                          if r.status in (429, 402) and tries < len(KEYS):
+                              sys.stderr.write("upstream %s\n" % r.status)
+                              rotate(); tries += 1; c.close(); continue
+                          if r.status == 403 and tries < len(KEYS):
+                              peek = r.read(400).decode(errors="replace")
+                              low = peek.lower()
+                              if "limit" in low or "quota" in low or "credit" in low:
+                                  sys.stderr.write("upstream 403 limit: %s\n" % peek[:120])
+                                  rotate(); tries += 1; c.close(); continue
+                              self.send_response(r.status)
+                              self.send_header("Connection", "close")
+                              self.end_headers()
+                              self.close_connection = True
+                              self.wfile.write(peek.encode()); self.wfile.flush()
+                              c.close(); return
+                          self.send_response(r.status)
+                          for k, v in r.getheaders():
+                              if k.lower() in ("transfer-encoding", "connection", "keep-alive", "content-length"): continue
+                              self.send_header(k, v)
+                          self.send_header("Connection", "close")
+                          self.end_headers()
+                          self.close_connection = True
+                          while True:
+                              chunk = r.read(8192)
+                              if not chunk: break
+                              self.wfile.write(chunk)
+                              self.wfile.flush()
+                      except Exception as e:
+                          sys.stderr.write("relay error: %s\n" % e)
+                      finally:
+                          try: c.close()
+                          except Exception: pass
+                      return
           H.do_GET = H._relay
           H.do_POST = H._relay
           H.do_PUT = H._relay
